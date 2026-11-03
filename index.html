@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Python Skin Listing Monitor</title>
+<style>
+  :root{
+    --bg:#F8F8F1; --ink:#1C2318; --panel:#FFFFFA; --line:#D6D8CB;
+    --mark:#F3DE9A; --p1:#B23A2A; --p2:#8A6414; --accent:#2F6F4F; --accent-ink:#FFFFFA;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+  h1{font-size:1.6em;margin:0 0 4px}
+  .sub{opacity:.8;margin:0 0 20px}
+  .disclaimer{background:#FBEFD9;border:1px solid #E7CE8F;border-radius:10px;padding:10px 14px;margin-bottom:20px;font-size:.92em}
+  .grid{display:grid;grid-template-columns:260px 1fr;gap:20px}
+  @media (max-width:800px){.grid{grid-template-columns:1fr}}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+  label{display:block;font-weight:600;margin-bottom:4px;font-size:.92em}
+  input[type=file]{width:100%}
+  textarea{width:100%;font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);border-radius:6px;padding:6px}
+  button{background:var(--accent);color:var(--accent-ink);border:none;border-radius:6px;padding:8px 12px;font-size:.9em;cursor:pointer;margin:4px 4px 0 0}
+  button.secondary{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  button:hover{opacity:.9}
+  table{border-collapse:collapse;width:100%;font-size:.88em}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:.8em;text-transform:uppercase;letter-spacing:.02em;opacity:.7}
+  tr:hover td{background:#F2F2E8}
+  .p1{color:var(--p1);font-weight:700}
+  .p2{color:var(--p2);font-weight:700}
+  mark{background:var(--mark);padding:0 2px;border-radius:2px}
+  .tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+  .tab{padding:7px 12px;border-radius:7px 7px 0 0;background:#EFEFE4;cursor:pointer;font-size:.9em;border:1px solid var(--line);border-bottom:none}
+  .tab.active{background:var(--panel);font-weight:700}
+  .panel{display:none}
+  .panel.active{display:block}
+  .summary{margin:0 0 10px}
+  select{padding:6px;border-radius:6px;border:1px solid var(--line);width:100%;margin-bottom:10px}
+  .case{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
+  .row label{font-weight:400}
+  footer{margin-top:30px;font-size:.82em;opacity:.65}
+  a{color:var(--accent)}
+  code{background:#EFEFE4;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Python Skin Listing Monitor</h1>
+  <p class="sub">A browser port of the <code>app.R</code> Shiny app in this repo — same keyword lists and scoring rule, runs entirely client-side. Built for the BL5314 "Show Me the Source" group project.</p>
+  <div class="disclaimer"><strong>A flag is not proof that a listing is illegal.</strong> This tool only sorts listings for a human reviewer, who makes the final call. Method follows Di Minin et al. (2019) and Xu et al. (2019). Sample listings are fictional, for demonstration only.</div>
+
+  <div class="grid">
+    <div>
+      <div class="box">
+        <label for="csvFile">Upload listings CSV</label>
+        <input id="csvFile" type="file" accept=".csv">
+        <p style="font-size:.82em;opacity:.75;margin:6px 0 0">Columns: id, platform, date, account, text, price. Without a file, the 14 fictional sample listings are used.</p>
+        <label style="margin-top:10px"><input type="checkbox" id="hideP3" checked> Hide P3 (not relevant / proof shown)</label>
+        <div style="margin-top:10px">
+          <button id="dlQueue" class="secondary">Export queue (CSV)</button>
+          <button id="dlDecisions" class="secondary">Export decisions (CSV)</button>
+        </div>
+      </div>
+      <div class="box">
+        <label>Keywords (comma-separated, editable)</label>
+        <div id="kwFields"></div>
+        <p style="font-size:.8em;opacity:.7;margin-top:6px">Changes apply as soon as you click out of a field. Add new slang or local-language terms here.</p>
+      </div>
+      <div class="box">
+        <a href="app.R">Download app.R</a> · <a href="data/sample_listings.csv">Download sample CSV</a>
+      </div>
+    </div>
+
+    <div>
+      <div class="tabs">
+        <div class="tab active" data-tab="queue">Queue</div>
+        <div class="tab" data-tab="case">Case review</div>
+        <div class="tab" data-tab="perf">Performance</div>
+      </div>
+
+      <div class="panel active" id="panel-queue">
+        <p class="summary" id="summary"></p>
+        <div style="overflow-x:auto"><table id="queueTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="panel" id="panel-case">
+        <select id="caseSelect"></select>
+        <div class="case" id="caseBox"></div>
+        <div class="row">
+          <label><input type="radio" name="decision" value="Escalate"> Escalate</label>
+          <label><input type="radio" name="decision" value="Review later" checked> Review later</label>
+          <label><input type="radio" name="decision" value="Dismiss"> Dismiss</label>
+        </div>
+        <label for="reasonSel">Reason</label>
+        <select id="reasonSel">
+          <option>No proof of origin</option>
+          <option>Possible wild-caught sold as captive-bred</option>
+          <option>Proof looks complete</option>
+          <option>Not python skin (false positive)</option>
+          <option>Other</option>
+        </select>
+        <label for="noteBox">Note for the team (optional)</label>
+        <textarea id="noteBox" rows="2"></textarea>
+        <div><button id="saveDecision">Save decision</button></div>
+        <h4>Saved decisions</h4>
+        <div style="overflow-x:auto"><table id="decTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="panel" id="panel-perf">
+        <div style="overflow-x:auto"><table id="perfTable"><thead></thead><tbody></tbody></table></div>
+        <h4>Words showing up in dismissed listings</h4>
+        <div style="overflow-x:auto"><table id="falseTable"><thead></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Source: <a href="https://github.com/heyu-hub/python-skin-monitor">github.com/heyu-hub/python-skin-monitor</a> · MIT licensed.</footer>
+</div>
+
+<script>
+const SAMPLE_CSV = `id,platform,date,account,text,price
+L001,Carousell,2026-07-02,lux_preloved_sg,"Authentic python skin handbag, natural colour, barely used. Ready stock, PM for price. No box.",SGD 1800
+L002,Carousell,2026-07-03,codecamp_sg,"Python programming course for beginners: pandas, numpy and data science projects. Weekend class.",SGD 350
+L003,Facebook Marketplace,2026-07-05,bagsforless,"Snake print PU leather tote, python-print design, vegan faux leather. Free delivery.",SGD 45
+L004,Carousell,2026-07-06,heritage_leather,"Genuine python leather wallet with CITES re-export permit and skin tag ID. Photos of permit available.",SGD 620
+L005,Xiaohongshu,2026-07-08,vintage_mei,"转让真蟒蛇皮包，九成新，现货，私聊价格。",
+L006,Instagram,2026-07-09,exotic_skins_wholesale,"Kulit ular sanca (python skin) wholesale, 50 skins ready, whatsapp for price list. Ship worldwide.",
+L007,Carousell,2026-07-11,mr_belt,"Python skin belt, size 34, made in Italy. Comes with brand card.",SGD 280
+L008,Facebook Marketplace,2026-07-12,reptile_lover,"Ball python for rehoming with tank, very friendly.",SGD 150
+L009,Carousell,2026-07-14,preloved_queen,"Python leather clutch, comes with certificate of authenticity from the brand and dust bag.",SGD 950
+L010,Xiaohongshu,2026-07-15,lux_hk_buyer,"网纹蟒皮钱包，带 CITES 许可证和追溯编号，可查验。",
+L011,Instagram,2026-07-18,jakarta_leathercraft,"Tas kulit ular piton asli, ready stock, harga murah, DM.",
+L012,Carousell,2026-07-20,sneaker_hub,"Python skin sneakers custom, wild python, fresh skins from supplier, DM for details.",SGD 900
+L013,Facebook Marketplace,2026-07-21,python_dev_jobs,"Hiring junior Python developer, Django and Flask, full time.",
+L014,Carousell,2026-07-23,mama_closet,"Burmese python skin handbag, no papers, selling fast, cash only.",SGD 700
+`;
+
+const DEFAULT_TERMS = {
+  species: ["python","reticulated","burmese","malayopython","bivittatus","蟒","蟒蛇","网纹蟒","sanca","ular sawa","piton"],
+  product: ["skin","leather","handbag","bag","wallet","belt","clutch","sneakers","shoes","tote","皮","包","钱包","kulit","tas"],
+  sale: ["ready stock","pm","dm","whatsapp","price","wholesale","selling","sgd","cash","现货","私聊","价格","转让","harga","murah"],
+  proof: ["cites","permit","skin tag","tag id","traceability","许可证","追溯","izin","sertifikat cites"],
+  weak: ["certificate of authenticity","brand card","dust bag","sustainable"],
+  exclude: ["programming","developer","pandas","numpy","django","flask","course","print","faux","pu leather","vegan","rehoming","tank","仿","印花"]
+};
+
+let terms = JSON.parse(JSON.stringify(DEFAULT_TERMS));
+let listings = parseCSV(SAMPLE_CSV);
+let decisions = []; // {id, decision, reason, note, time}
+
+// ---- CSV parsing (handles quoted fields with commas) ----
+function parseCSV(text){
+  const rows = [];
+  let i = 0, field = '', row = [], inQuotes = false;
+  const pushField = () => { row.push(field); field=''; };
+  const pushRow = () => { pushField(); rows.push(row); row=[]; };
+  while(i < text.length){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field+='"'; i+=2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    } else {
+      if(c === '"'){ inQuotes = true; i++; continue; }
+      if(c === ','){ pushField(); i++; continue; }
+      if(c === '\r'){ i++; continue; }
+      if(c === '\n'){ pushRow(); i++; continue; }
+      field += c; i++; continue;
+    }
+  }
+  if(field.length || row.length){ pushRow(); }
+  const rowsClean = rows.filter(r => r.length>1 || (r.length===1 && r[0] !== ''));
+  const header = rowsClean[0];
+  return rowsClean.slice(1).map(r => {
+    const o = {};
+    header.forEach((h,idx) => o[h.trim()] = (r[idx] ?? '').trim());
+    return o;
+  });
+}
+
+function escapeRegex(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function isAscii(s){ return /^[\x20-\x7e]+$/.test(s); }
+
+function termPattern(term){
+  if(isAscii(term)){
+    return new RegExp("(^|[^a-z])" + escapeRegex(term.toLowerCase()) + "($|[^a-z])", "i");
+  }
+  return new RegExp(escapeRegex(term));
+}
+
+function findTerms(text, list){
+  const t = (text||'').toLowerCase();
+  return list.filter(k => termPattern(k).test(t));
+}
+
+function scoreListing(text, tm){
+  const h = {};
+  for(const k of Object.keys(tm)) h[k] = findTerms(text, tm[k]);
+  const sp = h.species.length>0, pr = h.product.length>0, sa = h.sale.length>0, pf = h.proof.length>0, ex = h.exclude.length>0;
+  const score = 2*sp + 2*pr + 1*sa + 2*(sp && pr && !pf) - 6*ex;
+  let priority;
+  if(ex || !(sp && pr)) priority = "P3 - not relevant";
+  else if(!pf && score >= 7) priority = "P1 - no proof, sale cues";
+  else if(!pf) priority = "P2 - no proof";
+  else priority = "P3 - proof mentioned";
+  const proofLevel = pf ? "Partial or strong (check documents)" : (h.weak.length>0 ? "Weak (brand claim only)" : "None shown");
+  const reasons = [];
+  if(sp) reasons.push("species: " + h.species.join(", "));
+  if(pr) reasons.push("product: " + h.product.join(", "));
+  if(sa) reasons.push("sale cue: " + h.sale.join(", "));
+  if(pf) reasons.push("proof: " + h.proof.join(", "));
+  if(h.weak.length) reasons.push("weak claim: " + h.weak.join(", "));
+  if(ex) reasons.push("excluded: " + h.exclude.join(", "));
+  const hits = [...h.species, ...h.product, ...h.sale, ...h.proof];
+  return { score, priority, proof: proofLevel, reasons: reasons.join(" | "), hits };
+}
+
+function highlight(text, words){
+  let out = escapeHtml(text);
+  const uniq = [...new Set(words)];
+  for(const w of uniq){
+    out = out.replace(new RegExp("(" + escapeRegex(w) + ")", "gi"), "<mark>$1</mark>");
+  }
+  return out;
+}
+
+function getScored(){
+  return listings.map(d => {
+    const s = scoreListing(d.text, terms);
+    return { ...d, score: s.score, priority: s.priority, proof: s.proof, reasons: s.reasons, hits: s.hits };
+  }).sort((a,b) => {
+    const pa = a.priority.slice(0,2), pb = b.priority.slice(0,2);
+    if(pa !== pb) return pa < pb ? -1 : 1;
+    return b.score - a.score;
+  });
+}
+
+function getQueue(){
+  const s = getScored();
+  const hideP3 = document.getElementById('hideP3').checked;
+  return hideP3 ? s.filter(d => !d.priority.startsWith("P3")) : s;
+}
+
+// ---- Rendering ----
+function renderKwFields(){
+  const el = document.getElementById('kwFields');
+  el.innerHTML = '';
+  for(const name of Object.keys(terms)){
+    const label = document.createElement('label');
+    label.textContent = name;
+    label.style.marginTop = '8px';
+    const ta = document.createElement('textarea');
+    ta.rows = 2;
+    ta.value = terms[name].join(", ");
+    ta.addEventListener('change', () => {
+      terms[name] = ta.value.split(",").map(x => x.trim()).filter(Boolean);
+      renderAll();
+    });
+    el.appendChild(label);
+    el.appendChild(ta);
+  }
+}
+
+function renderSummary(){
+  const s = getScored();
+  const p1 = s.filter(d=>d.priority.startsWith("P1")).length;
+  const p2 = s.filter(d=>d.priority.startsWith("P2")).length;
+  const p3 = s.filter(d=>d.priority.startsWith("P3")).length;
+  document.getElementById('summary').innerHTML =
+    `<strong>${s.length}</strong> listings scanned &middot; <span class="p1">${p1} P1</span> &middot; <span class="p2">${p2} P2</span> &middot; ${p3} P3`;
+}
+
+function renderQueueTable(){
+  const q = getQueue();
+  const cols = ["priority","id","platform","date","price","proof","score","reasons"];
+  const thead = document.querySelector('#queueTable thead');
+  const tbody = document.querySelector('#queueTable tbody');
+  thead.innerHTML = '<tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr>';
+  tbody.innerHTML = q.map(r => {
+    const cls = r.priority.startsWith("P1") ? "p1" : r.priority.startsWith("P2") ? "p2" : "";
+    return '<tr>' + cols.map(c => `<td class="${c==='priority'?cls:''}">${escapeHtml(String(r[c]??''))}</td>`).join('') + '</tr>';
+  }).join('');
+}
+
+function renderCaseSelect(){
+  const sel = document.getElementById('caseSelect');
+  const q = getQueue();
+  const prev = sel.value;
+  sel.innerHTML = q.map(r => `<option value="${r.id}">${r.id} - ${r.priority}</option>`).join('');
+  if(q.some(r=>r.id===prev)) sel.value = prev;
+  renderCaseBox();
+}
+
+function renderCaseBox(){
+  const id = document.getElementById('caseSelect').value;
+  const r = getScored().find(d => d.id === id);
+  const box = document.getElementById('caseBox');
+  if(!r){ box.innerHTML = '<p>No listing selected.</p>'; return; }
+  box.innerHTML = `
+    <h4>${escapeHtml(r.id)} &middot; ${escapeHtml(r.platform||'')} &middot; ${escapeHtml(r.date||'')}</h4>
+    <p><strong>Account:</strong> ${escapeHtml(r.account||'')} &nbsp;&nbsp; <strong>Price:</strong> ${escapeHtml(r.price||'')}</p>
+    <p>${highlight(r.text, r.hits)}</p>
+    <p><strong>Proof of origin:</strong> ${escapeHtml(r.proof)}</p>
+    <p><strong>Why flagged:</strong> ${escapeHtml(r.reasons)}</p>
+  `;
+}
+
+function renderDecisions(){
+  const thead = document.querySelector('#decTable thead');
+  const tbody = document.querySelector('#decTable tbody');
+  const cols = ["id","decision","reason","note","time"];
+  thead.innerHTML = '<tr>' + cols.map(c=>`<th>${c}</th>`).join('') + '</tr>';
+  tbody.innerHTML = decisions.map(d => '<tr>' + cols.map(c=>`<td>${escapeHtml(String(d[c]??''))}</td>`).join('') + '</tr>').join('');
+}
+
+function renderPerf(){
+  const theadP = document.querySelector('#perfTable thead');
+  const tbodyP = document.querySelector('#perfTable tbody');
+  if(decisions.length === 0){ theadP.innerHTML=''; tbodyP.innerHTML='<tr><td>No decisions saved yet.</td></tr>'; }
+  else{
+    const reviewed = decisions.length;
+    const useful = decisions.filter(d=>d.decision !== "Dismiss").length;
+    const fp = decisions.filter(d=>d.decision === "Dismiss").length;
+    theadP.innerHTML = '<tr><th>Flags reviewed</th><th>Useful (escalate/review)</th><th>False positives (dismissed)</th><th>Share useful</th></tr>';
+    tbodyP.innerHTML = `<tr><td>${reviewed}</td><td>${useful}</td><td>${fp}</td><td>${Math.round(100*useful/reviewed)}%</td></tr>`;
+  }
+
+  const theadF = document.querySelector('#falseTable thead');
+  const tbodyF = document.querySelector('#falseTable tbody');
+  const dismissedIds = decisions.filter(d=>d.decision==="Dismiss").map(d=>d.id);
+  if(dismissedIds.length === 0){ theadF.innerHTML=''; tbodyF.innerHTML='<tr><td>No dismissed listings yet.</td></tr>'; return; }
+  const scored = getScored();
+  const words = {};
+  scored.filter(d => dismissedIds.includes(d.id)).forEach(d => {
+    findTerms(d.text, [...terms.species, ...terms.product]).forEach(w => words[w] = (words[w]||0)+1);
+  });
+  const entries = Object.entries(words).sort((a,b)=>b[1]-a[1]);
+  if(entries.length===0){ theadF.innerHTML=''; tbodyF.innerHTML='<tr><td>No matched terms in dismissed listings.</td></tr>'; return; }
+  theadF.innerHTML = '<tr><th>Word in dismissed listings</th><th>Times</th></tr>';
+  tbodyF.innerHTML = entries.map(([w,n]) => `<tr><td>${escapeHtml(w)}</td><td>${n}</td></tr>`).join('');
+}
+
+function renderAll(){
+  renderSummary();
+  renderQueueTable();
+  renderCaseSelect();
+  renderDecisions();
+  renderPerf();
+}
+
+// ---- CSV download helper ----
+function toCSV(rows, cols){
+  const esc = v => { const s = String(v??''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
+  return [cols.join(","), ...rows.map(r => cols.map(c=>esc(r[c])).join(","))].join("\n");
+}
+function downloadText(filename, text){
+  const blob = new Blob([text], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---- Wire up events ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+document.getElementById('hideP3').addEventListener('change', renderAll);
+document.getElementById('caseSelect').addEventListener('change', renderCaseBox);
+
+document.getElementById('csvFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    listings = parseCSV(reader.result);
+    renderAll();
+  };
+  reader.readAsText(file, 'UTF-8');
+});
+
+document.getElementById('dlQueue').addEventListener('click', () => {
+  const cols = ["priority","id","platform","date","account","text","price","proof","score","reasons"];
+  downloadText('python_queue.csv', toCSV(getQueue(), cols));
+});
+document.getElementById('dlDecisions').addEventListener('click', () => {
+  downloadText('python_decisions.csv', toCSV(decisions, ["id","decision","reason","note","time"]));
+});
+
+document.getElementById('saveDecision').addEventListener('click', () => {
+  const id = document.getElementById('caseSelect').value;
+  if(!id) return;
+  const decision = document.querySelector('input[name="decision"]:checked').value;
+  const reason = document.getElementById('reasonSel').value;
+  const note = document.getElementById('noteBox').value;
+  const time = new Date().toISOString().slice(0,16).replace('T',' ');
+  decisions = decisions.filter(d => d.id !== id);
+  decisions.push({ id, decision, reason, note, time });
+  renderDecisions();
+  renderPerf();
+});
+
+renderKwFields();
+renderAll();
+</script>
+</body>
+</html>
